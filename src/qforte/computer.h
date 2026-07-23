@@ -149,8 +149,11 @@ class Computer {
 
     void zero_state();
 
-    /// find a tensor difference between the FCI computer and the Fock quantum computer
-    double get_fci_tensor_diff(const FCIComputer& fci_computer, const bool do_phase_compare);
+    /// find a tensor difference between the FCI computer and the Fock quantum computer and returns the tensor
+    Tensor get_fci_tensor_diff(const FCIComputer& fci_computer, const bool do_phase_compare);
+
+    /// find a tensor difference between the FCI computer and the Fock quantum computer and returns the norm
+    double get_fci_tensor_diff_norm(const FCIComputer& fci_computer, const bool do_phase_compare);
 
     /// get timings
     std::vector<std::pair<std::string, double>> get_timings() { return timings_; }

@@ -1081,17 +1081,17 @@ void Computer::apply_sq_operator(const SQOperator& mysqop){
 }
 
 
-double Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool do_phase_compare){
-    int nel = fci_computer.get_nel();
-    int sz = fci_computer.get_sz();
-    int norb = fci_computer.get_norb();
+Tensor Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool do_phase_compare){
+    const int nel = fci_computer.get_nel();
+    const int sz = fci_computer.get_sz();
+    const int norb = fci_computer.get_norb();
 
     if ((nel + sz) % 2 != 0){
         throw std::invalid_argument("Inconsistent (nel, sz)=(" + std::to_string(nel) + "," + std::to_string(sz) + "): (nel+sz) must be even."); 
     }
 
-    int n_alpha = std::floor((nel + sz) / 2);
-    int n_beta = std::floor((nel - sz) / 2);
+    const int n_alpha = std::floor((nel + sz) / 2);
+    const int n_beta = std::floor((nel - sz) / 2);
 
     if (n_alpha < 0 || n_beta < 0 || n_alpha > norb || n_beta > norb) {
         throw std::invalid_argument("Invalid spin counts from (nel,sz)=(" +
@@ -1146,18 +1146,18 @@ double Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool
         return mask;
     };
 
-    long long nIa = comb(norb, n_alpha);
-    long long nIb = comb(norb, n_beta);
+    const long long nIa = comb(norb, n_alpha);
+    const long long nIb = comb(norb, n_beta);
 
-    Tensor T = fci_computer.get_state_deep();
+    Tensor fci_state = fci_computer.get_state_deep();
 
-    if (T.ndim() != 2){
-        throw std::invalid_argument("FCI tensor must be 2D, but got " + std::to_string(T.ndim()) + "D.");
+    if (fci_state.ndim() != 2){
+        throw std::invalid_argument("FCI tensor must be 2D, but got " + std::to_string(fci_state.ndim()) + "D.");
     }
 
-    auto tshape = T.shape();
-    if (tshape[0] != static_cast<size_t>(nIa) || tshape[1] != static_cast<size_t>(nIb)){
-        throw std::invalid_argument("FCI tensor shape mismatch: expected (" + std::to_string(nIa) + "," + std::to_string(nIb) + "), but got (" + std::to_string(tshape[0]) + "," + std::to_string(tshape[1]) + ").");
+    auto fci_shape = fci_state.shape();
+    if (fci_shape[0] != static_cast<size_t>(nIa) || fci_shape[1] != static_cast<size_t>(nIb)){
+        throw std::invalid_argument("FCI tensor shape mismatch: expected (" + std::to_string(nIa) + "," + std::to_string(nIb) + "), but got (" + std::to_string(fci_shape[0]) + "," + std::to_string(fci_shape[1]) + ").");
     }
 
     const auto& C = coeff_;
@@ -1198,27 +1198,54 @@ double Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool
     std::complex<double> global_phase = {1.0, 0.0};
 
     if (do_phase_compare) {
-        int hf_alpha_mask = unrank_comb_lex(norb, n_alpha, 0);
-        int hf_beta_mask = unrank_comb_lex(norb, n_beta, 0);
+        std::complex<double> overlap{0.0, 0.0};
 
-        size_t hf_sv_idx = masks_to_sv_idx(hf_alpha_mask, hf_beta_mask);
+        for (size_t Ia = 0; Ia < static_cast<size_t>(nIa); ++Ia) {
+            const int alpha_mask = unrank_comb_lex(norb, n_alpha, static_cast<int>(Ia));
 
-        std::complex<double> c_hf = C[hf_sv_idx];
-        std::complex<double> t_hf = T.get(std::vector<size_t>{0, 0});
-        
-        std::complex<double> det_phase_hf = static_cast<double>(phase_abblock_to_abab(hf_alpha_mask, hf_beta_mask));
+            for (size_t Ib = 0; Ib < static_cast<size_t>(nIb); ++Ib) {
+                const int beta_mask = unrank_comb_lex(norb, n_beta, static_cast<int>(Ib));
 
-        // If both are nonzero, solve c_hf ≈ global_phase * det_phase_hf * t_hf
-        if (std::abs(t_hf) > 0 && std::abs(c_hf) > 0) {
-            std::complex<double> ratio = c_hf / (det_phase_hf * t_hf);
+                const size_t sv_idx = masks_to_sv_idx(alpha_mask, beta_mask);
 
-            // normalize to unit modulus
-            global_phase = ratio / std::abs(ratio);
+                const std::complex<double> cval = C[sv_idx];
+                const std::complex<double> raw_tval = fci_state.get({Ia, Ib});
+
+                const double det_phase = static_cast<double>(phase_abblock_to_abab(alpha_mask, beta_mask));
+
+                const std::complex<double> converted_tval = det_phase * raw_tval;
+
+                // Finds phase g minimizing ||C - g*T||.
+                overlap += std::conj(converted_tval) * cval;
+            }
         }
+
+        if (std::abs(overlap) > 0.0) {
+            global_phase = overlap / std::abs(overlap);
+        }
+
+        // int hf_alpha_mask = unrank_comb_lex(norb, n_alpha, 0);
+        // int hf_beta_mask = unrank_comb_lex(norb, n_beta, 0);
+
+        // size_t hf_sv_idx = masks_to_sv_idx(hf_alpha_mask, hf_beta_mask);
+
+        // std::complex<double> c_hf = C[hf_sv_idx];
+        // std::complex<double> t_hf = fci_state.get(std::vector<size_t>{0, 0});
+        
+        // std::complex<double> det_phase_hf = static_cast<double>(phase_abblock_to_abab(hf_alpha_mask, hf_beta_mask));
+
+        // // If both are nonzero, solve c_hf ≈ global_phase * det_phase_hf * t_hf
+        // if (std::abs(t_hf) > 0 && std::abs(c_hf) > 0) {
+        //     std::complex<double> ratio = c_hf / (det_phase_hf * t_hf);
+
+        //     // normalize to unit modulus
+        //     global_phase = ratio / std::abs(ratio);
+        // }
     }
 
+    Tensor difference = fci_state;
+
     double sector_c_abs2 = 0.0;
-    double sector_diff_abs2 = 0.0;
 
     for (size_t Ia = 0; Ia < nIa; ++Ia) {
         int alpha_mask = unrank_comb_lex(norb, n_alpha, Ia);
@@ -1228,16 +1255,20 @@ double Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool
             size_t sv_idx = masks_to_sv_idx(alpha_mask, beta_mask);
 
             std::complex<double> cval = C[sv_idx];
-            std::complex<double> tval = T.get({Ia, Ib});
+            std::complex<double> raw_tval = fci_state.get({Ia, Ib});
 
             sector_c_abs2 += std::norm(cval);
 
+            std::complex<double> compared_tval = raw_tval;
+
             if (do_phase_compare) {
-                tval = global_phase * static_cast<double>(phase_abblock_to_abab(alpha_mask, beta_mask)) * tval;
+                const double det_phase = static_cast<double>(phase_abblock_to_abab(alpha_mask, beta_mask));
+                compared_tval = global_phase * det_phase * raw_tval;
+
+                // tval = global_phase * static_cast<double>(phase_abblock_to_abab(alpha_mask, beta_mask)) * tval;
             }
 
-            std::complex<double> diff = cval - tval;
-            sector_diff_abs2 += std::norm(diff);
+            difference.set({Ia, Ib}, cval - compared_tval);
         }
     }
 
@@ -1260,9 +1291,28 @@ double Computer::get_fci_tensor_diff(const FCIComputer& fci_computer, const bool
         );
     }
 
-    return std::sqrt(sector_diff_abs2);
+    return difference;
 }
 
+
+double Computer::get_fci_tensor_diff_norm(const FCIComputer& fci_computer, const bool do_phase_compare){
+    const Tensor diff = get_fci_tensor_diff(fci_computer, do_phase_compare);
+    const auto shape = diff.shape();
+
+    if (diff.ndim() != 2){
+        throw std::invalid_argument("FCI tensor must be 2D, but got " + std::to_string(diff.ndim()) + "D.");
+    }
+
+    double norm_squared = 0.0;
+
+    for (size_t Ia = 0; Ia < shape[0]; ++Ia) {
+        for (size_t Ib = 0; Ib < shape[1]; ++Ib) {
+            norm_squared += std::norm(diff.get({Ia, Ib}));
+        }
+    }
+
+    return std::sqrt(norm_squared);
+}
 
 void Computer::z_chain(int num){
 

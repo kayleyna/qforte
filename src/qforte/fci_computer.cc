@@ -2097,6 +2097,25 @@ void FCIComputer::apply_givens_rotation(
     //   - We snapshot u0,v0 before writing so the update is safely in-place.
     //
 
+    auto phase_abblock_to_abab = [](uint64_t alpha_mask, uint64_t beta_mask) -> int {
+        int parity = 0;
+        uint64_t bm = beta_mask;
+
+        while (bm != 0) {
+            const uint64_t lsb = bm & (~bm + 1);
+            const int b = __builtin_ctzll(lsb);
+
+            parity ^=
+                __builtin_popcountll(
+                    alpha_mask >> (b + 1)
+                ) & 1;
+
+            bm ^= lsb;
+        }
+
+        return parity ? -1 : 1;
+    };
+
     // be aware of sin/cos shuffling and the parity factors (look for bugs within this!!)
     std::complex<double>* __restrict data = C_.data().data();
 
@@ -2120,9 +2139,19 @@ void FCIComputer::apply_givens_rotation(
             const std::complex<double> u0 = data[u_idx];
             const std::complex<double> v0 = data[v_idx];
 
-            double parity_factor = static_cast<double>(paritya1[ia] * parityb1[ib]);
+            // double parity_factor = static_cast<double>(paritya1[ia] * parityb1[ib]);
 
-            parity_factor = 1.0;
+            const uint64_t source_alpha_mask = graph_.get_astr_at_idx(sa);
+            const uint64_t target_alpha_mask = graph_.get_astr_at_idx(ta);
+            const uint64_t source_beta_mask = graph_.get_bstr_at_idx(sb);
+            const uint64_t target_beta_mask = graph_.get_bstr_at_idx(tb);
+
+            const int source_ordering_phase = phase_abblock_to_abab(source_alpha_mask, source_beta_mask);
+            const int target_ordering_phase = phase_abblock_to_abab(target_alpha_mask, target_beta_mask);
+
+            const double pair_phase = static_cast<double>(source_ordering_phase * target_ordering_phase);
+
+            // parity_factor = 1.0;            
 
             // Under current Givens source/target convention, beta-beta rotations require one additional sign.
             // if (q1 % 2 == 1 && q2 % 2 == 1) {
@@ -2130,11 +2159,11 @@ void FCIComputer::apply_givens_rotation(
             // }
 
             // 2×2 update
-            const std::complex<double> u_new = cosfactor * u0 + parity_factor * sinfactor * v0;
-            const std::complex<double> v_new = -parity_factor * sinfactor * u0 + cosfactor * v0;
+            // const std::complex<double> u_new = cosfactor * u0 + parity_factor * sinfactor * v0;
+            // const std::complex<double> v_new = -parity_factor * sinfactor * u0 + cosfactor * v0;
 
-            // const std::complex<double> u_new = cosfactor * u0 + sinfactor * v0;
-            // const std::complex<double> v_new = sinfactor * u0 + cosfactor * v0;
+            const std::complex<double> u_new = cosfactor * u0 - pair_phase * sinfactor * v0;
+            const std::complex<double> v_new = pair_phase * sinfactor * u0 + cosfactor * v0;
 
             // const std::complex<double> u_new = factor * u0 + acc_coeff2 * p2 * v0;
             // const std::complex<double> v_new = factor * v0 + acc_coeff1 * p1 * u0;

@@ -295,6 +295,7 @@ PYBIND11_MODULE(qforte, m) {
         .def("get_timings", &Computer::get_timings)
         .def("clear_timings", &Computer::clear_timings)
         .def("get_fci_tensor_diff", &Computer::get_fci_tensor_diff)
+        .def("get_fci_tensor_diff_norm", &Computer::get_fci_tensor_diff_norm)
         .def("str", &Computer::str)
         .def("__str__", &Computer::str)
         .def("__repr__", &Computer::str);

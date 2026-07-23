@@ -46,8 +46,8 @@ norb = int(len(ref) / 2) # number orbitals
 print(f" nqbit:     {norb*2}")
 print(f" nel:       {nel}")
 
-q1 = 2 # source/control
-q2 = 6 # target
+q1 = 3 # source/control
+q2 = 7 # target
 theta = np.pi/4
 givens = qf.gate("Givens", q2, q1, theta)
 
@@ -104,13 +104,11 @@ elif(reference == 'random'):
 
     fock_comp.set_state(state)
     
+# # check prepared state
 # print(fci_comp)
 # print(fock_comp)
 
-# FCI Computer case - Givens gates
-# fci_comp.apply_givens_rotation(q2, q1, theta)
-
-apply_many_givs = True
+apply_many_givs = False
 
 if (apply_many_givs):
     pairs = get_qubit_givens_pairs(ref)
@@ -126,9 +124,13 @@ else:
     fci_comp.apply_givens_rotation(q1, q2, theta)
     fock_comp.apply_gate(givens)
 
-print(fci_comp)
+print(f"fci_comp^ {fci_comp}")
 print(fock_comp)
 
 do_phase_compare = True
+
 tensor_diff = fock_comp.get_fci_tensor_diff(fci_comp, do_phase_compare)
-print(tensor_diff)
+print(f"tensor diff^ {tensor_diff}")
+
+tensor_diff_norm = fock_comp.get_fci_tensor_diff_norm(fci_comp, do_phase_compare)
+print(f"tensor diff norm: {tensor_diff_norm}")
