@@ -54,6 +54,8 @@ class UCCNVQE(UCCVQE):
         self._pool_type = pool_type
         self._noise_factor = noise_factor
 
+        self._dEs = [] 
+
         self._tops = []
         self._tamps = []
         self._conmutator_pool = []
@@ -166,7 +168,7 @@ class UCCNVQE(UCCVQE):
 
         print('\n\n                ==> UCCN-VQE summary <==')
         print('-----------------------------------------------------------')
-        print('Final UCCN-VQE Energy:                      ', round(self._Egs, 10))
+        print('Final UCCN-VQE Energy:                      ', round(float(self._Egs), 10))
         if self._max_moment_rank:
             print('Moment-corrected (MP) UCCN-VQE Energy:      ', round(self._E_mmcc_mp[0], 10))
             print('Moment-corrected (EN) UCCN-VQE Energy:      ', round(self._E_mmcc_en[0], 10))
@@ -203,9 +205,12 @@ class UCCNVQE(UCCVQE):
         # Optimizer-specific options
         if self._optimizer in ['BFGS', 'CG', 'L-BFGS-B', 'TNC', 'trust-constr']:
             opts['gtol'] = self._opt_thresh
-        if self._optimizer == 'Nelder-Mead':
+        if self._optimizer == ['Nelder-Mead']:
             opts['fatol'] = self._opt_ftol
-        if self._optimizer in ['Powell', 'L-BFGS-B', 'TNC', 'SLSQP']:
+        if self._optimizer == ['Powell']:
+            opts['ftol'] = self._opt_ftol
+            opts['xtol'] = self._opt_thresh
+        if self._optimizer in ['L-BFGS-B', 'TNC', 'SLSQP']:
             opts['ftol'] = self._opt_ftol
         if self._optimizer == 'COBYLA':
             opts['tol'] = self._opt_ftol
@@ -229,9 +234,10 @@ class UCCNVQE(UCCVQE):
             # for m in range(len(self._tamps)):
             #     self._n_pauli_trm_measures += self._Nm[m] * self._Nl * res.njev
 
-            for tmu in res.x:
-                if(np.abs(tmu) > 1.0e-12):
-                    self._n_pauli_trm_measures += int(2 * self._Nl * res.njev)
+            if hasattr(res, "njev"):
+                for tmu in res.x:
+                    if(np.abs(tmu) > 1.0e-12):
+                        self._n_pauli_trm_measures += int(2 * self._Nl * res.njev)
 
             self._n_pauli_trm_measures += int(self._Nl * res.nfev)
 
