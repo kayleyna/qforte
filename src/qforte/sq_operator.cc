@@ -69,6 +69,16 @@ int SQOperator::many_body_order() const {
     return max_rank;
 }
 
+int SQOperator::excitation_rank() const {
+    int max_rank = -1;
+    for (const auto& term : terms_) {
+        max_rank = std::max(
+            max_rank,
+            static_cast<int>(std::get<1>(term).size()));
+    }
+    return max_rank;
+}
+
 // TODO(Tyler): Need to expose and need a test case
 std::vector<int> SQOperator::ranks_present() const {
     std::vector<int> ranks_present;

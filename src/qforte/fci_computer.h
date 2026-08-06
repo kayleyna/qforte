@@ -355,16 +355,53 @@ class FCIComputer {
       const bool antiherm = false,
       const bool adjoint = false);
 
+    /// A function that applies the QNP_px evolution of a
+    /// two-term (hermitian) SQOperator to the FCIComputer.
+    /// The operator is multipled by by the evolution time.
+    void apply_sqop_qnp_px_evolution(
+      const std::complex<double> time,
+      const SQOperator& sqop,
+      const bool adjoint = false);
+
+    /// A function that applies the Givens evolution of a
+    /// two-term (hermitian) SQOperator to the FCIComputer.
+    /// The operator is multipled by by the evolution time.
+    void apply_sqop_givens_evolution(
+      const std::complex<double> time,
+      const SQOperator& sqop,
+      const bool adjoint = false);
+
     /// Applies a Givens rotation to the FCIComputer state.
     /// The rotation mixes the two qubits identified by `q1` and `q2`
     /// by the rotation angle `theta`.
     void apply_givens_rotation(
       const int q1,
       const int q2,
-      const double theta);
+      const double theta,
+      const bool adjoint);
+
+    /// Applies a QNP_or rotation to the FCIComputer state.
+    /// The rotation mixes four qubits by the rotation angle `theta`.
+    void apply_qnp_or(
+      const int q1,
+      const int q2,
+      const int q3,
+      const int q4,
+      const double theta,
+      const bool adjoint);
+
+    /// Applies a QNP_px rotation to the FCIComputer state.
+    /// The rotation mixes four qubits by the rotation angle `theta`.
+    void apply_qnp_px(
+      const int q1,
+      const int q2,
+      const int q3,
+      const int q4,
+      const double theta,
+      const bool adjoint);
 
     /// A function that applies the exponentials of an ordered list of
-    /// two-term (hermitian) Se1ephant5026QOperators to the FCIComputer
+    /// two-term (hermitian) SQOperators to the FCIComputer
     /// The 'basic' implies thet trotterizaiton is 1st order and done in a single step.
     /// The evolution time is assumend to be 1.0,
     /// Onus on the user to assure evolution is unitary.
@@ -372,6 +409,16 @@ class FCIComputer {
     void evolve_pool_trotter_basic(
       const SQOpPool& pool,
       const bool antiherm = false,
+      const bool adjoint = false);
+
+    /// A function that applies the exponentials of an ordered list of
+    /// two-term (hermitian) SQOperators to the FCIComputer
+    /// The 'basic' implies thet trotterizaiton is 1st order and done in a single step.
+    /// The evolution time is assumend to be 1.0,
+    /// Onus on the user to assure evolution is unitary.
+    /// Primary use of this funcion is for QNP ansatz
+    void evolve_pool_qnp_basic(
+      const SQOpPool& pool,
       const bool adjoint = false);
 
     /// Same as above but all inplace for C_

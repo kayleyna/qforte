@@ -1769,6 +1769,44 @@ void FCIComputer::evolve_pool_trotter_basic(
     }
 }
 
+void FCIComputer::evolve_pool_qnp_basic(
+      const SQOpPool& pool,
+      const bool adjoint)
+
+{
+    if(adjoint){
+        for (int i = pool.terms().size() - 1; i >= 0; --i) {
+            if (pool.terms()[i].second.excitation_rank() == 2) {
+                apply_sqop_qnp_px_evolution(
+                    pool.terms()[i].first, 
+                    pool.terms()[i].second,
+                    adjoint);
+            }
+            else if (pool.terms()[i].second.excitation_rank() == 1) {
+                apply_sqop_givens_evolution(
+                    pool.terms()[i].first, 
+                    pool.terms()[i].second,
+                    adjoint);
+            }
+        }
+    } else {
+        for (const auto& sqop_term : pool.terms()) {
+            if (sqop_term.second.excitation_rank() == 2) {
+               apply_sqop_qnp_px_evolution(
+                    sqop_term.first, 
+                    sqop_term.second,
+                    adjoint);
+            }
+            else if (sqop_term.second.excitation_rank() == 1) {
+                apply_sqop_givens_evolution(
+                    sqop_term.first, 
+                    sqop_term.second,
+                    adjoint);
+            }
+        }
+    }
+}
+
 void FCIComputer::evolve_pool_trotter_basic_v2(
       const SQOpPool& pool,
       const bool antiherm,
@@ -1993,184 +2031,203 @@ void FCIComputer::apply_sqop_evolution_v2(
         adjoint); 
 }
 
+void FCIComputer::apply_sqop_qnp_px_evolution(
+      const std::complex<double> time,
+      const SQOperator& sqop,
+      const bool adjoint)
+{
+    if (sqop.terms().size() != 2) {
+        throw std::invalid_argument("QNP evolution code is called with multiple terms");
+    }
+
+    auto term = sqop.terms()[0];
+    auto coeff = std::get<0>(term);
+
+    if(std::abs(coeff) < compute_threshold_){
+        return;
+    }
+
+    const std::complex<double> complex_theta = time * coeff;
+
+    if (std::abs(complex_theta.imag()) > compute_threshold_) {
+        throw std::invalid_argument(
+            "QNP evolution requires a real rotation angle");
+    }
+
+    const double theta = complex_theta.real();
+
+    apply_qnp_px(
+        std::get<1>(term)[0],
+        std::get<1>(term)[1],
+        std::get<2>(term)[0],
+        std::get<2>(term)[1],
+        theta,
+        adjoint);
+}
+
+void FCIComputer::apply_sqop_givens_evolution(
+      const std::complex<double> time,
+      const SQOperator& sqop,
+      const bool adjoint)
+{
+    if (sqop.terms().size() != 2) {
+        throw std::invalid_argument("Givens evolution code is called with multiple terms");
+    }
+
+    auto term = sqop.terms()[0];
+    auto coeff = std::get<0>(term);
+
+    if(std::abs(coeff) < compute_threshold_){
+        return;
+    }
+
+    const std::complex<double> complex_theta = time * coeff;
+
+    if (std::abs(complex_theta.imag()) > compute_threshold_) {
+        throw std::invalid_argument(
+            "Givens evolution requires a real rotation angle");
+    }
+
+    const double theta = complex_theta.real();
+
+    apply_givens_rotation(
+        std::get<1>(term)[0],
+        std::get<2>(term)[0],
+        theta,
+        adjoint);
+}
+
 void FCIComputer::apply_givens_rotation(
       const int q1,
       const int q2,
-      const double theta)
+      const double theta,
+      const bool adjoint)
 {
     if (q1 == q2) {
         throw std::invalid_argument("Givens rotation qubits must be different");
     }
 
-    if (q1 % 2 == 0 && q2 % 2 == 1 || q1 % 2 == 1 && q2 % 2 == 0) {
+    if ((q1 % 2) != (q2 % 2)) {
         throw std::invalid_argument("Givens rotation qubits must not be alpha-beta pairs");
     }
 
-    // turn q1 and q2 into alpha and beta indices (qubit=spin --> spatial)
-    // q1 is the source, q2 is the target
-    int num_alpha_rot = 0;
-    int num_beta_rot = 0;
+    auto givens_pairs = graph_.make_givens_matching_each(q1, q2);
+    const std::vector<int>& sourcea = std::get<0>(givens_pairs);
+    const std::vector<int>& targeta = std::get<1>(givens_pairs);
+    const std::vector<int>& phasea = std::get<2>(givens_pairs);
+    const std::vector<int>& sourceb = std::get<3>(givens_pairs);
+    const std::vector<int>& targetb = std::get<4>(givens_pairs);
+    const std::vector<int>& phaseb = std::get<5>(givens_pairs);
 
-    std::vector<int> source_orbs_a;
-    std::vector<int> target_orbs_a;
-    std::vector<int> source_orbs_b;
-    std::vector<int> target_orbs_b;
-
-    if (q1 % 2 == 0 && q2 % 2 == 0) {
-        // pure alpha rotation
-        // below returns lists of alpha indices
-        num_alpha_rot = 1;
-        source_orbs_a.push_back(std::floor(q1 / 2));
-        target_orbs_a.push_back(std::floor(q2 / 2));
-    } else if (q1 % 2 == 1 && q2 % 2 == 1) {
-        // pure beta rotation
-        // below returns lists of beta indices
-        num_beta_rot = 1;
-        source_orbs_b.push_back(std::floor(q1 / 2));
-        target_orbs_b.push_back(std::floor(q2 / 2));
-    } else {
-        throw std::invalid_argument("Givens rotation qubits must be both alpha or both beta");
-    }
-
-    std::tuple<int, std::vector<int>, std::vector<int>, std::vector<int>> alphamap = graph_.make_givens_mapping_each(
-        true,
-        source_orbs_a,
-        target_orbs_a);
-
-    if (std::get<0>(alphamap) == 0) {
+    if (sourcea.empty() || sourceb.empty()) {
         return;
     }
 
-    const std::vector<int>& sourcea1 = std::get<1>(alphamap);
-    const std::vector<int>& targeta1 = std::get<2>(alphamap);
-    const std::vector<int>& paritya1 = std::get<3>(alphamap);
-
-    // check this block below
-    // for (int i = 0; i < std::get<0>(alphamap); i++) {
-    //     sourcea1[i] = std::get<1>(alphamap)[i];
-    //     targeta1[i] = std::get<2>(alphamap)[i];        
-    // }
-
-    std::tuple<int, std::vector<int>, std::vector<int>, std::vector<int>> betamap = graph_.make_givens_mapping_each(
-        false,
-        source_orbs_b,
-        target_orbs_b);
-
-    if (std::get<0>(betamap) == 0) {
-        return;
+    double theta_temp = theta;
+    if (adjoint) {
+        theta_temp = -theta;
     }
 
-    const std::vector<int>& sourceb1 = std::get<1>(betamap);
-    const std::vector<int>& targetb1 = std::get<2>(betamap);
-    const std::vector<int>& parityb1 = std::get<3>(betamap);
-
-
-    // check this block below
-    // for (int i = 0; i < std::get<0>(betamap); i++) {
-    //     sourceb1[i] = std::get<1>(betamap)[i];
-    //     targetb1[i] = std::get<2>(betamap)[i];
-    // }
-
-    std::complex<double> sinfactor = std::sin(theta/2.0);
-    std::complex<double> cosfactor = std::cos(theta/2.0);
-
-    // ===> In-place 2×2 Givens-like update (replaces the 4 loops used previously) <===
-    //
-    // This assumes the pairing relationships hold:
-    //   sourcea1 == targeta2,  sourceb1 == targetb2
-    //   sourcea2 == targeta1,  sourceb2 == targetb1
-    // so that each coupled pair of determinants can be updated with a 2×2 block:
-    //
-    //   [ u' ] = [ factor                  acc_coeff2 * p2 ] [ u0 ]
-    //   [ v' ]   [ acc_coeff1 * p1         factor          ] [ v0 ]
-    //
-    // where
-    //   u ≡ Cout[sourcea1[i], sourceb1[j]]
-    //   v ≡ Cout[targeta1[i], targetb1[j]]
-    //   p1 = paritya1[i] * parityb1[j]  (for the g† leg)
-    //   p2 = paritya2[i] * parityb2[j]  (for the g   leg)
-    //
-    // Notes:
-    //   - factor  = cos(time * |ncoeff|)
-    //   - acc_coeff1 = conj(coeff) * phase * (-i) * sin(time*|ncoeff|)/|ncoeff|
-    //   - acc_coeff2 = coeff        *       (-i) * sin(time*|ncoeff|)/|ncoeff|
-    //   - We snapshot u0,v0 before writing so the update is safely in-place.
-    //
-
-    auto phase_abblock_to_abab = [](uint64_t alpha_mask, uint64_t beta_mask) -> int {
-        int parity = 0;
-        uint64_t bm = beta_mask;
-
-        while (bm != 0) {
-            const uint64_t lsb = bm & (~bm + 1);
-            const int b = __builtin_ctzll(lsb);
-
-            parity ^=
-                __builtin_popcountll(
-                    alpha_mask >> (b + 1)
-                ) & 1;
-
-            bm ^= lsb;
-        }
-
-        return parity ? -1 : 1;
-    };
-
-    // be aware of sin/cos shuffling and the parity factors (look for bugs within this!!)
+    std::complex<double> sinfactor = std::sin(theta_temp/2.0);
+    std::complex<double> cosfactor = std::cos(theta_temp/2.0);
     std::complex<double>* __restrict data = C_.data().data();
 
-    for (std::size_t ia = 0; ia < sourcea1.size(); ++ia) {
-        const int sa = sourcea1[ia];
-        const int ta = targeta1[ia];
+    for (std::size_t ia = 0; ia < sourcea.size(); ++ia) {
+        const int sa = sourcea[ia];
+        const int ta = targeta[ia];
+        const double phasea_i = static_cast<double>(phasea[ia]);
 
-        // Precompute row offsets
-        const std::size_t sa_row = static_cast<std::size_t>(sa) * static_cast<std::size_t>(nbeta_strs_);
-        const std::size_t ta_row = static_cast<std::size_t>(ta) * static_cast<std::size_t>(nbeta_strs_);
+        const std::size_t sa_row =
+            static_cast<std::size_t>(sa) * static_cast<std::size_t>(nbeta_strs_);
+        const std::size_t ta_row =
+            static_cast<std::size_t>(ta) * static_cast<std::size_t>(nbeta_strs_);
 
-        for (std::size_t ib = 0; ib < sourceb1.size(); ++ib) {
-            const int sb = sourceb1[ib];
-            const int tb = targetb1[ib];
+        for (std::size_t ib = 0; ib < sourceb.size(); ++ib) {
+            const int sb = sourceb[ib];
+            const int tb = targetb[ib];
+            const std::size_t u_idx = sa_row + static_cast<std::size_t>(sb);
+            const std::size_t v_idx = ta_row + static_cast<std::size_t>(tb);
 
-            // Column indices
-            const std::size_t u_idx = sa_row + static_cast<std::size_t>(sb); // u ≡ (sa,sb)
-            const std::size_t v_idx = ta_row + static_cast<std::size_t>(tb); // v ≡ (ta,tb)
-
-            // Snapshot old values before writing (crucial for in-place correctness)
+            // Snapshot old values before writing (crucial for in-place correctness).
             const std::complex<double> u0 = data[u_idx];
             const std::complex<double> v0 = data[v_idx];
 
-            // double parity_factor = static_cast<double>(paritya1[ia] * parityb1[ib]);
+            const double layout_phase = phasea_i * static_cast<double>(phaseb[ib]);
 
-            const uint64_t source_alpha_mask = graph_.get_astr_at_idx(sa);
-            const uint64_t target_alpha_mask = graph_.get_astr_at_idx(ta);
-            const uint64_t source_beta_mask = graph_.get_bstr_at_idx(sb);
-            const uint64_t target_beta_mask = graph_.get_bstr_at_idx(tb);
-
-            const int source_ordering_phase = phase_abblock_to_abab(source_alpha_mask, source_beta_mask);
-            const int target_ordering_phase = phase_abblock_to_abab(target_alpha_mask, target_beta_mask);
-
-            const double pair_phase = static_cast<double>(source_ordering_phase * target_ordering_phase);
-
-            // parity_factor = 1.0;            
-
-            // Under current Givens source/target convention, beta-beta rotations require one additional sign.
-            // if (q1 % 2 == 1 && q2 % 2 == 1) {
-            //     parity_factor *= -1.0;
-            // }
-
-            // 2×2 update
-            // const std::complex<double> u_new = cosfactor * u0 + parity_factor * sinfactor * v0;
-            // const std::complex<double> v_new = -parity_factor * sinfactor * u0 + cosfactor * v0;
-
-            const std::complex<double> u_new = cosfactor * u0 - pair_phase * sinfactor * v0;
-            const std::complex<double> v_new = pair_phase * sinfactor * u0 + cosfactor * v0;
-
-            // const std::complex<double> u_new = factor * u0 + acc_coeff2 * p2 * v0;
-            // const std::complex<double> v_new = factor * v0 + acc_coeff1 * p1 * u0;
+            // In Computer's direct two-qubit basis, with q1 as source/control
+            // and q2 as target, the Givens block acts on
+            //   u = |source occupied, target empty>
+            //   v = |source empty, target occupied>
+            // as u' = c u - s v and v' = s u + c v.  The graph supplies compact
+            // alpha/beta phase factors needed to express that same update in
+            // FCI's spin-blocked layout.
+            const std::complex<double> u_new = cosfactor * u0 - layout_phase * sinfactor * v0;
+            const std::complex<double> v_new = layout_phase * sinfactor * u0 + cosfactor * v0;
 
             data[u_idx] = u_new;
             data[v_idx] = v_new;
         }
+    }
+}
+
+void FCIComputer::apply_qnp_or(
+    const int q1,
+    const int q2,
+    const int q3,
+    const int q4,
+    const double theta,
+    const bool adjoint)
+{
+    if ((q1 == q2) or (q1 == q3) or (q1 == q4) or (q2 == q3) or (q2 == q4) or (q3 == q4)) {
+        throw std::invalid_argument("QNP_or qubits must be different.");
+    }
+
+    apply_givens_rotation(q1, q3, theta, adjoint);
+    apply_givens_rotation(q2, q4, theta, adjoint);
+}
+
+void FCIComputer::apply_qnp_px(
+    const int q1,
+    const int q2,
+    const int q3,
+    const int q4,
+    const double theta,
+    const bool adjoint)
+{
+    auto qnp_px_pairs = graph_.make_qnp_px_matching_each(q1, q2, q3, q4);
+    const std::vector<int>& sourcea = std::get<0>(qnp_px_pairs);
+    const std::vector<int>& targeta = std::get<1>(qnp_px_pairs);
+    const std::vector<int>& sourceb = std::get<2>(qnp_px_pairs);
+    const std::vector<int>& targetb = std::get<3>(qnp_px_pairs);
+    const std::vector<int>& phase = std::get<4>(qnp_px_pairs);
+
+    if (sourcea.empty()) {
+        return;
+    }
+
+    double theta_temp = theta;
+    if (adjoint) {
+        theta_temp = -theta;
+    }
+
+    const std::complex<double> sinfactor = std::sin(theta_temp / 2.0);
+    const std::complex<double> cosfactor = std::cos(theta_temp / 2.0);
+    std::complex<double>* __restrict data = C_.data().data();
+
+    for (std::size_t i = 0; i < sourcea.size(); ++i) {
+        const std::size_t u_idx =
+            static_cast<std::size_t>(sourcea[i]) * static_cast<std::size_t>(nbeta_strs_) +
+            static_cast<std::size_t>(sourceb[i]);
+        const std::size_t v_idx =
+            static_cast<std::size_t>(targeta[i]) * static_cast<std::size_t>(nbeta_strs_) +
+            static_cast<std::size_t>(targetb[i]);
+
+        const std::complex<double> u0 = data[u_idx];
+        const std::complex<double> v0 = data[v_idx];
+        const double layout_phase = static_cast<double>(phase[i]);
+
+        data[u_idx] = cosfactor * u0 + layout_phase * sinfactor * v0;
+        data[v_idx] = -layout_phase * sinfactor * u0 + cosfactor * v0;
     }
 }
 
@@ -3169,6 +3226,3 @@ void FCIComputer::print_vector_uint(const std::vector<uint64_t>& vec, const std:
     }
     std::cout << std::endl;
 }
-
-
-

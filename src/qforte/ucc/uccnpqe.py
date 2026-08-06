@@ -23,7 +23,7 @@ from scipy.linalg import lstsq
 class UCCNPQE(UCCPQE):
     """
     A class that encompasses the three components of using the projective
-    quantum eigensolver to optimize a disentangld UCCN-like wave function.
+    quantum eigensolver to optimize a disentangled UCCN-like wave function.
 
     UCC-PQE: (1) prepares a quantum state on the quantum computer
     representing the wave function to be simulated, (2) evaluates the residuals
@@ -49,19 +49,28 @@ class UCCNPQE(UCCPQE):
     """
     def run(self,
             pool_type='SD',
+            generator_type='ucc', # or qnp
             opt_thresh = 1.0e-5,
             opt_maxiter = 40,
             noise_factor = 0.0,
-            optimizer = 'jacobi'):
+            optimizer = 'jacobi',
+            sru_type=None,
+            sru_sweep_type=None):
 
         if(self._state_prep_type != 'occupation_list'):
             raise ValueError("PQE implementation can only handle occupation_list Hartree-Fock reference.")
 
         self._pool_type = pool_type
+        self._generator_type = generator_type
         self._optimizer = optimizer
         self._opt_thresh = opt_thresh
         self._opt_maxiter = opt_maxiter
         self._noise_factor = noise_factor
+        
+        if sru_type is not None:
+            self._sru_type = sru_type
+        if sru_sweep_type is not None:
+            self._sru_sweep_type = sru_sweep_type
 
         self._tops = []
         self._tamps = []
@@ -72,6 +81,8 @@ class UCCNPQE(UCCPQE):
         # list: tuple(excited determinant, phase_factor)
         self._excited_dets = []
         self._excited_dets_fci_comp = []
+        
+        self._dEs = [] # to help with plotting
 
         self._n_classical_params = 0
         self._n_cnot = 0
@@ -315,7 +326,7 @@ class UCCNPQE(UCCPQE):
             if(phase_factor != 0.0):
                 self._excited_dets_fci_comp.append((non_zero_tidxs[0], phase_factor))
 
-    def get_residual_vector(self, trial_amps):
+    def get_residual_vector(self, trial_amps, inc_nres_vec=True):
         if(self._computer_type == 'fock'):
             return self.get_residual_vector_fock(trial_amps)
         elif(self._computer_type == 'fci'):
@@ -368,8 +379,16 @@ class UCCNPQE(UCCPQE):
         return residuals
     
     def get_residual_vector_fci(self, trial_amps):
+        if(self._generator_type == 'ucc'):
+            return self.get_residual_vector_fci_ucc(trial_amps)
+        elif(self._generator_type == 'qnp'):
+            return self.get_residual_vector_fci_qnp(trial_amps)
+        else:
+            raise ValueError(f"{self._generator_type} is an unrecognized generator type.")
+    
+    def get_residual_vector_fci_ucc(self, trial_amps, inc_nres_vec=True):
         """Returns the residual vector with elements pertaining to all operators
-        in the ansatz circuit.
+        in the UCC ansatz circuit.
 
         Parameters
         ----------
@@ -396,8 +415,7 @@ class UCCNPQE(UCCPQE):
         
         qc_res.hartree_fock()
 
-
-        # function assumers first order trotter, with 1 trotter step, and time = 1.0
+        # function assumes first order trotter, with 1 trotter step, and time = 1.0
         qc_res.evolve_pool_trotter_basic(
             temp_pool,
             antiherm=True,
@@ -433,13 +451,187 @@ class UCCNPQE(UCCPQE):
 
             residuals.append(res_m)
 
-        self._res_vec_norm = np.linalg.norm(residuals)
-        self._res_vec_evals += 1
-        self._res_m_evals += len(self._tamps)
+        if (inc_nres_vec):
+            self._res_vec_norm = np.linalg.norm(residuals)
+            self._res_vec_evals += 1
+            self._res_m_evals += len(self._tamps)
+        # else:
+        #     self._res_m_evals += 1 # is this necessary? 
 
         self._curr_energy = qc_res.get_hf_dot()
 
         return residuals
+    
+    def get_residual_vector_fci_qnp(self, trial_amps, inc_nres_vec=True):
+        """Returns the residual vector with elements pertaining to all operators
+        in the QNP ansatz circuit.
+
+        Parameters
+        ----------
+        trial_amps : list of floats
+            The list of (real) floating point numbers which will characterize
+            the state preparation circuit used in calculation of the residuals.
+        """
+        if(self._pool_type in ['sa_SD', 'GSD']):
+            raise ValueError('Must use single term particle-hole nbody operators for residual calculation')
+        
+        if not self._ref_from_hf:
+            raise ValueError('get_residual_vector_fci_comp only compatible with hf reference at this time.')
+        
+        temp_pool = qforte.SQOpPool()
+
+        for tamp, top in zip(trial_amps, self._tops):
+            temp_pool.add(tamp, self._pool_obj[top][1])
+
+        qc_res = qforte.FCIComputer(
+            self._nel, 
+            self._2_spin, 
+            self._norb)
+        
+        qc_res.hartree_fock()
+
+        # assumes time = 1.0
+        qc_res.evolve_pool_qnp_basic(
+            temp_pool,
+            adjoint=False)
+        
+        if(self._apply_ham_as_tensor):
+            qc_res.apply_tensor_spat_012bdy(
+                self._zero_body_energy, 
+                self._mo_oeis, 
+                self._mo_teis, 
+                self._mo_teis_einsum, 
+                self._norb)
+        else:   
+            qc_res.apply_sqop(self._sq_ham)
+
+        qc_res.evolve_pool_qnp_basic(
+            temp_pool,
+            adjoint=True)
+
+        R = qc_res.get_state_deep()
+        residuals = []
+
+        for IaIb, phase_factor in self._excited_dets_fci_comp:
+
+            # Get the residual element, after accounting for numerical noise.
+            res_m = R.get(IaIb) * phase_factor
+            if(np.imag(res_m) != 0.0):
+                raise ValueError("residual has imaginary component, something went wrong!!")
+
+            if(self._noise_factor > 1e-12):
+                res_m = np.random.normal(np.real(res_m), self._noise_factor)
+
+            residuals.append(res_m)
+
+        if (inc_nres_vec):
+            self._res_vec_norm = np.linalg.norm(residuals)
+            self._res_vec_evals += 1
+            self._res_m_evals += len(self._tamps)
+        # else:
+        #     self._res_m_evals += 1 # is this necessary? 
+
+        self._curr_energy = qc_res.get_hf_dot()
+
+        return residuals
+        
+    
+    def get_cmu_fci(self, mu, trial_amps): # cmu for one single mu
+        if(self._pool_type == 'sa_SD'):
+            raise ValueError('Must use single term particle-hole nbody operators for residual calculation')
+        
+        if not self._ref_from_hf:
+            raise ValueError('get_cmu_vector_fci only compatible with hf reference at this time.')
+        
+        temp_pool = qforte.SQOpPool()
+        
+        for tamp, top in zip(trial_amps, self._tops):
+            temp_pool.add(tamp, self._pool_obj[top][1])
+
+        IaIb_mu = self._excited_dets_fci_comp[mu][0]
+
+        qc_cmu = qforte.FCIComputer(
+            self._nel, # num electrons
+            self._2_spin, 
+            self._norb # num orbitals
+        ) 
+
+        qc_cmu.set_element(IaIb_mu, 1) # setting psi_mu
+
+        # applies unitary, first order trotter
+        qc_cmu.evolve_pool_trotter_basic(
+            temp_pool,
+            antiherm=True,
+            adjoint=False)
+
+        Cmu = qc_cmu.get_state_deep()
+
+        # applies hamiltonian
+        if(self._apply_ham_as_tensor):
+            qc_cmu.apply_tensor_spat_012bdy(
+                self._zero_body_energy, 
+                self._mo_oeis, 
+                self._mo_teis, 
+                self._mo_teis_einsum, 
+                self._norb)
+        else:   
+            qc_cmu.apply_sqop(self._sq_ham)
+
+        Cmu2 = qc_cmu.get_state_deep()
+
+        cmu = Cmu.vector_dot(Cmu2)
+
+        if self._noise_factor > 1e-12:
+            cmu = np.random.normal(np.real(cmu), self._noise_factor)
+
+        return cmu
+    
+    def get_c0_fci(self, trial_amps): # this function not needed
+        if(self._pool_type == 'sa_SD'): # check for singles doubles
+            raise ValueError('Must use single term particle-hole nbody operators for residual calculation')
+        
+        if not self._ref_from_hf: # should be in HF
+            raise ValueError('get_cmu_vector_fci only compatible with hf reference at this time.')
+        
+        temp_pool = qforte.SQOpPool()
+        
+        for tamp, top in zip(trial_amps, self._tops):
+            temp_pool.add(tamp, self._pool_obj[top][1])
+
+        qc_c0 = qforte.FCIComputer(
+            self._nel,
+            self._2_spin,
+            self._norb
+        )
+
+        qc_c0.hartree_fock() # psi0
+
+        # applies unitary, first order trotter
+        qc_c0.evolve_pool_trotter_basic(
+            temp_pool,
+            antiherm=True,
+            adjoint=False)
+        
+        C0 = qc_c0.get_state_deep()
+        
+        # applies Hamiltonian
+        if(self._apply_ham_as_tensor):
+            qc_c0.apply_tensor_spat_012bdy(
+                self._zero_body_energy, 
+                self._mo_oeis, 
+                self._mo_teis, 
+                self._mo_teis_einsum, 
+                self._norb)
+        else:   
+            qc_c0.apply_sqop(self._sq_ham)
+        
+        C02 = qc_c0.get_state_deep() 
+        c0 = C0.vector_dot(C02)
+
+        if self._noise_factor > 1e-12:
+            c0 = np.random.normal(np.real(c0), self._noise_factor)
+        
+        return c0
 
     def get_residual_vector_fqe(self, trial_amps):
         """Returns the residual vector with elements pertaining to all operators
@@ -524,6 +716,7 @@ class UCCNPQE(UCCPQE):
             self._tamps.append(0.0)
 
 UCCNPQE.jacobi_solver = optimizer.jacobi_solver
+UCCNPQE.subspace_rotation_solver = optimizer.subspace_rotation_solver
 UCCNPQE.scipy_solver = optimizer.scipy_solver
 UCCNPQE.construct_moment_space = moment_energy_corrections.construct_moment_space
 UCCNPQE.compute_moment_energies = moment_energy_corrections.compute_moment_energies

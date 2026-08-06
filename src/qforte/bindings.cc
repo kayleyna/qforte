@@ -73,6 +73,7 @@ PYBIND11_MODULE(qforte, m) {
         .def("terms", &SQOperator::terms)
         .def("get_largest_alfa_beta_indices", &SQOperator::get_largest_alfa_beta_indices) // TODO(Tyler) Need Test
         .def("many_body_order", &SQOperator::many_body_order) // TODO(Tyler) Need Test
+        .def("excitation_rank", &SQOperator::excitation_rank)
         .def("ranks_present", &SQOperator::ranks_present) // TODO(Tyler) Need Test
         .def("canonical_order", &SQOperator::canonical_order)
         .def("simplify", &SQOperator::simplify)
@@ -334,15 +335,48 @@ PYBIND11_MODULE(qforte, m) {
             py::arg("antiherm") = false,
             py::arg("adjoint") = false
             )
+        .def("apply_sqop_qnp_px_evolution", &FCIComputer::apply_sqop_qnp_px_evolution, 
+            py::arg("time"),
+            py::arg("sqop"),
+            py::arg("adjoint") = false
+            )
+        .def("apply_sqop_givens_evolution", &FCIComputer::apply_sqop_givens_evolution, 
+            py::arg("time"),
+            py::arg("sqop"),
+            py::arg("adjoint") = false
+            )
         .def("apply_givens_rotation",
             &FCIComputer::apply_givens_rotation,
             py::arg("q1"),
             py::arg("q2"),
-            py::arg("theta")
+            py::arg("theta"),
+            py::arg("adjoint") = false
+            )
+        .def("apply_qnp_or",
+            &FCIComputer::apply_qnp_or,
+            py::arg("q1"),
+            py::arg("q2"),
+            py::arg("q3"),
+            py::arg("q4"),
+            py::arg("theta"),
+            py::arg("adjoint") = false
+            )
+        .def("apply_qnp_px",
+            &FCIComputer::apply_qnp_px,
+            py::arg("q1"),
+            py::arg("q2"),
+            py::arg("q3"),
+            py::arg("q4"),
+            py::arg("theta"),
+            py::arg("adjoint") = false
             )
         .def("evolve_pool_trotter_basic", &FCIComputer::evolve_pool_trotter_basic_v2, // Making Faster Version the Default! Check QK and PQE!
             py::arg("sqop"),
             py::arg("antiherm") = false,
+            py::arg("adjoint") = false
+            )
+        .def("evolve_pool_qnp_basic", &FCIComputer::evolve_pool_qnp_basic, 
+            py::arg("sqop"),
             py::arg("adjoint") = false
             )
         .def("evolve_pool_trotter_basic_not_inplace", &FCIComputer::evolve_pool_trotter_basic, 
@@ -391,6 +425,8 @@ PYBIND11_MODULE(qforte, m) {
         .def(py::init<int, int, int>(), "nalfa"_a, "nbeta"_a, "norb"_a, "Make a FCIGraph")
         .def("make_mapping_each", &FCIGraph::make_mapping_each)
         .def("make_givens_mapping_each", &FCIGraph::make_givens_mapping_each)
+        .def("make_givens_matching_each", &FCIGraph::make_givens_matching_each)
+        .def("make_qnp_px_matching_each", &FCIGraph::make_qnp_px_matching_each)
         .def("get_nalfa", &FCIGraph::get_nalfa)
         .def("get_nbeta", &FCIGraph::get_nbeta)
         .def("get_lena", &FCIGraph::get_lena)
@@ -498,6 +534,8 @@ PYBIND11_MODULE(qforte, m) {
     py::class_<Gate>(m, "Gate")
         .def("target", &Gate::target)
         .def("control", &Gate::control)
+        .def("qubits", &Gate::qubits)
+        .def("nqubits", &Gate::nqubits)
         .def("gate_id", &Gate::gate_id)
         .def("sparse_matrix", &Gate::sparse_matrix)
         .def("adjoint", &Gate::adjoint)
@@ -695,6 +733,15 @@ PYBIND11_MODULE(qforte, m) {
             return make_gate(type, target, control, parameter);
         },
         "type"_a, "target"_a, "control"_a, "parameter"_a = 0.0, "Make a gate.");
+
+    m.def(
+        "gate",
+        [](std::string type, size_t q1, size_t q2, size_t q3, size_t q4,
+           std::complex<double> parameter) {
+            return make_gate(type, q1, q2, q3, q4, parameter);
+        },
+        "type"_a, "q1"_a, "q2"_a, "q3"_a, "q4"_a, "parameter"_a = 0.0,
+        "Make a gate.");
 
     m.def("control_gate", &make_control_gate, "control"_a, "Gate"_a);
 }

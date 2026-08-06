@@ -633,21 +633,26 @@ class UCCVQE(VQE, UCC):
         self._k_counter += 1
 
         if(self._k_counter == 1):
-            print('\n    k iteration         Energy               dE           Ngvec ev      Ngm ev*         ||g||')
-            print('--------------------------------------------------------------------------------------------------')
+            print('\n    k iteration         Energy               dE           Ngvec ev      Ngm ev*        Npt ev            ||g||')
+            print('-------------------------------------------------------------------------------------------------------------------')
+
+            self._print_summary_file = True
             if (self._print_summary_file):
-                f = open("summary.dat", "w+", buffering=1)
-                f.write('\n#    k iteration         Energy               dE           Ngvec ev      Ngm ev*         ||g||')
-                f.write('\n#--------------------------------------------------------------------------------------------------')
+                f = open("summary_vqe.dat", "w+", buffering=1)
+                f.write('k_iteration        Energy              dE              Ngvec_ev      Ngm_ev*        Npt_ev            ||g||')
+                # f.write('\n#--------------------------------------------------------------------------------------------------')
                 f.close()
 
         # else:
         dE = self._curr_energy - self._prev_energy
-        print(f'     {self._k_counter:7}        {self._curr_energy:+12.10f}      {dE:+12.10f}      {self._res_vec_evals:4}        {self._res_m_evals:6}       {self._curr_grad_norm:+12.10f}')
+        self._dEs.append(dE)
+        n_pt_measures = 2*self._Nl*self._k_counter*len(self._tamps) + self._Nl*self._k_counter
+        
+        print(f'     {self._k_counter:7}        {self._curr_energy:+12.10f}      {dE:+12.10f}      {self._res_vec_evals:4}        {self._res_m_evals:6}       {n_pt_measures:10}        {self._curr_grad_norm:+12.10f}')
 
         if (self._print_summary_file):
-            f = open("summary.dat", "a", buffering=1)
-            f.write(f'\n       {self._k_counter:7}        {self._curr_energy:+12.12f}      {dE:+12.12f}      {self._res_vec_evals:4}        {self._res_m_evals:6}       {self._curr_grad_norm:+12.12f}')
+            f = open(f"summary_vqe.dat", "a", buffering=1)
+            f.write(f'\n{self._k_counter:7}        {self._curr_energy:+12.12f}      {dE:+12.12f}      {self._res_vec_evals:4}        {self._res_m_evals:6}       {n_pt_measures:10}        {self._curr_grad_norm:+12.12f}')
             f.close()
 
         self._prev_energy = self._curr_energy

@@ -353,6 +353,247 @@ std::tuple<int, std::vector<int>, std::vector<int>, std::vector<int>> FCIGraph::
                     parity);
 }
 
+std::tuple<std::vector<int>, std::vector<int>, std::vector<int>,
+           std::vector<int>, std::vector<int>, std::vector<int>>
+FCIGraph::make_givens_matching_each(int q1, int q2)
+{
+    if (q1 == q2) {
+        throw std::invalid_argument("Givens rotation qubits must be different");
+    }
+
+    if ((q1 % 2) != (q2 % 2)) {
+        throw std::invalid_argument("Givens rotation qubits must be both alpha or both beta");
+    }
+
+    timer_.reset();
+
+    const bool alpha_rotation = (q1 % 2 == 0);
+    const int source_orb = q1 / 2;
+    const int target_orb = q2 / 2;
+
+    if (source_orb < 0 || source_orb >= norb_ || target_orb < 0 || target_orb >= norb_) {
+        throw std::invalid_argument("Givens rotation qubit index is inconsistent with graph orbital count");
+    }
+
+    const uint64_t source_mask = set_bit(0, source_orb);
+    const uint64_t target_mask = set_bit(0, target_orb);
+
+    std::vector<int> sourcea;
+    std::vector<int> targeta;
+    std::vector<int> phasea;
+    std::vector<int> sourceb;
+    std::vector<int> targetb;
+    std::vector<int> phaseb;
+
+    const int low_orb = std::min(source_orb, target_orb);
+    const int high_orb = std::max(source_orb, target_orb);
+
+    auto phase_for_alpha_rotation = [low_orb, high_orb](uint64_t beta_mask) -> int {
+        int parity = 0;
+
+        // For an alpha Givens, alpha_source and alpha_target differ only by
+        // moving one alpha electron between low_orb and high_orb.  In the
+        // FCI spin-blocked <-> interleaved-qubit phase ratio, all common alpha
+        // occupations cancel and only beta occupations in [low, high) remain.
+        for (int b = low_orb; b < high_orb; ++b) {
+            parity ^= static_cast<int>((beta_mask >> b) & uint64_t{1});
+        }
+
+        return parity ? -1 : 1;
+    };
+
+    auto phase_for_beta_rotation = [low_orb, high_orb](uint64_t alpha_mask) -> int {
+        int parity = 0;
+
+        // For a beta Givens, the changing beta electron crosses the occupied
+        // alpha creators with spatial indices in (low, high].
+        for (int a = low_orb + 1; a <= high_orb; ++a) {
+            parity ^= static_cast<int>((alpha_mask >> a) & uint64_t{1});
+        }
+
+        return parity ? -1 : 1;
+    };
+
+    if (alpha_rotation) {
+        sourcea.reserve(static_cast<size_t>(lena_));
+        targeta.reserve(static_cast<size_t>(lena_));
+        phasea.reserve(static_cast<size_t>(lena_));
+        sourceb.reserve(static_cast<size_t>(lenb_));
+        targetb.reserve(static_cast<size_t>(lenb_));
+        phaseb.reserve(static_cast<size_t>(lenb_));
+
+        for (int ia = 0; ia < lena_; ++ia) {
+            const uint64_t alpha_source = astr_[ia];
+
+            if ((alpha_source & source_mask) == 0 || (alpha_source & target_mask) != 0) {
+                continue;
+            }
+
+            const uint64_t alpha_target = set_bit(unset_bit(alpha_source, source_orb), target_orb);
+            const int ta = static_cast<int>(aind_.at(alpha_target));
+
+            sourcea.push_back(ia);
+            targeta.push_back(ta);
+            phasea.push_back(1);
+        }
+
+        for (int ib = 0; ib < lenb_; ++ib) {
+            const uint64_t beta = bstr_[ib];
+
+            sourceb.push_back(ib);
+            targetb.push_back(ib);
+            phaseb.push_back(phase_for_alpha_rotation(beta));
+        }
+    } else {
+        sourcea.reserve(static_cast<size_t>(lena_));
+        targeta.reserve(static_cast<size_t>(lena_));
+        phasea.reserve(static_cast<size_t>(lena_));
+        sourceb.reserve(static_cast<size_t>(lenb_));
+        targetb.reserve(static_cast<size_t>(lenb_));
+        phaseb.reserve(static_cast<size_t>(lenb_));
+
+        for (int ia = 0; ia < lena_; ++ia) {
+            const uint64_t alpha = astr_[ia];
+
+            sourcea.push_back(ia);
+            targeta.push_back(ia);
+            phasea.push_back(phase_for_beta_rotation(alpha));
+        }
+
+        for (int ib = 0; ib < lenb_; ++ib) {
+            const uint64_t beta_source = bstr_[ib];
+
+            if ((beta_source & source_mask) == 0 || (beta_source & target_mask) != 0) {
+                continue;
+            }
+
+            const uint64_t beta_target = set_bit(unset_bit(beta_source, source_orb), target_orb);
+            const int tb = static_cast<int>(bind_.at(beta_target));
+
+            sourceb.push_back(ib);
+            targetb.push_back(tb);
+            phaseb.push_back(1);
+        }
+    }
+
+    timer_.acc_record("make_givens_matching_each");
+
+    return std::make_tuple(
+                    sourcea,
+                    targeta,
+                    phasea,
+                    sourceb,
+                    targetb,
+                    phaseb);
+}
+
+std::tuple<std::vector<int>, std::vector<int>, std::vector<int>,
+           std::vector<int>, std::vector<int>>
+FCIGraph::make_qnp_px_matching_each(int q1, int q2, int q3, int q4)
+{
+    if ((q1 == q2) or (q1 == q3) or (q1 == q4) or (q2 == q3) or (q2 == q4) or (q3 == q4)) {
+        throw std::invalid_argument("QNP_px qubits must be different.");
+    }
+
+    const int nqb = 2 * norb_;
+    if (q1 < 0 || q1 >= nqb || q2 < 0 || q2 >= nqb ||
+        q3 < 0 || q3 >= nqb || q4 < 0 || q4 >= nqb) {
+        throw std::invalid_argument("QNP_px qubit index is inconsistent with graph orbital count.");
+    }
+
+    const int target_alpha_count = static_cast<int>((q1 % 2) == 0) + static_cast<int>((q2 % 2) == 0);
+    const int source_alpha_count = static_cast<int>((q3 % 2) == 0) + static_cast<int>((q4 % 2) == 0);
+
+    if (target_alpha_count != source_alpha_count) {
+        throw std::invalid_argument("QNP_px must preserve alpha and beta electron counts in FCIGraph.");
+    }
+
+    timer_.reset();
+
+    auto has_qubit_occupation = [](uint64_t alpha_mask, uint64_t beta_mask, int qubit) -> bool {
+        const uint64_t spin_mask = uint64_t{1} << (qubit / 2);
+        return (qubit % 2 == 0) ? ((alpha_mask & spin_mask) != 0)
+                                : ((beta_mask & spin_mask) != 0);
+    };
+
+    auto set_qubit_occupation = [](uint64_t& alpha_mask, uint64_t& beta_mask,
+                                   int qubit, bool occupied) {
+        const uint64_t spin_mask = uint64_t{1} << (qubit / 2);
+        uint64_t& spin_block = (qubit % 2 == 0) ? alpha_mask : beta_mask;
+        if (occupied) {
+            spin_block |= spin_mask;
+        } else {
+            spin_block &= ~spin_mask;
+        }
+    };
+
+    auto phase_abblock_to_abab = [](uint64_t alpha_mask, uint64_t beta_mask) -> int {
+        int parity = 0;
+        uint64_t bm = beta_mask;
+
+        while (bm) {
+            const uint64_t lsb = bm & (~bm + uint64_t{1});
+            const int b = __builtin_ctzll(lsb);
+            parity ^= (__builtin_popcountll(alpha_mask >> (b + 1)) & 1);
+            bm ^= lsb;
+        }
+
+        return parity ? -1 : 1;
+    };
+
+    std::vector<int> sourcea;
+    std::vector<int> targeta;
+    std::vector<int> sourceb;
+    std::vector<int> targetb;
+    std::vector<int> phase;
+
+    sourcea.reserve(static_cast<size_t>(std::min(lena_, lenb_)));
+    targeta.reserve(static_cast<size_t>(std::min(lena_, lenb_)));
+    sourceb.reserve(static_cast<size_t>(std::min(lena_, lenb_)));
+    targetb.reserve(static_cast<size_t>(std::min(lena_, lenb_)));
+    phase.reserve(static_cast<size_t>(std::min(lena_, lenb_)));
+
+    for (int ia = 0; ia < lena_; ++ia) {
+        const uint64_t alpha_source = astr_[ia];
+
+        for (int ib = 0; ib < lenb_; ++ib) {
+            const uint64_t beta_source = bstr_[ib];
+
+            if (has_qubit_occupation(alpha_source, beta_source, q1) ||
+                has_qubit_occupation(alpha_source, beta_source, q2) ||
+                !has_qubit_occupation(alpha_source, beta_source, q3) ||
+                !has_qubit_occupation(alpha_source, beta_source, q4)) {
+                continue;
+            }
+
+            uint64_t alpha_target = alpha_source;
+            uint64_t beta_target = beta_source;
+
+            set_qubit_occupation(alpha_target, beta_target, q1, true);
+            set_qubit_occupation(alpha_target, beta_target, q2, true);
+            set_qubit_occupation(alpha_target, beta_target, q3, false);
+            set_qubit_occupation(alpha_target, beta_target, q4, false);
+
+            sourcea.push_back(ia);
+            targeta.push_back(static_cast<int>(aind_.at(alpha_target)));
+            sourceb.push_back(ib);
+            targetb.push_back(static_cast<int>(bind_.at(beta_target)));
+            phase.push_back(
+                phase_abblock_to_abab(alpha_source, beta_source) *
+                phase_abblock_to_abab(alpha_target, beta_target));
+        }
+    }
+
+    timer_.acc_record("make_qnp_px_matching_each");
+
+    return std::make_tuple(
+                    sourcea,
+                    targeta,
+                    sourceb,
+                    targetb,
+                    phase);
+}
+
 /// NICK: 1. Consider a faster blas veriosn, 2. consider using qubit basis, 3. rename (too long)
 std::vector<uint64_t> FCIGraph::get_lex_bitstrings(int nele, int norb) {
 

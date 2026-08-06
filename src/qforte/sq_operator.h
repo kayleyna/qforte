@@ -53,6 +53,9 @@ class SQOperator {
     /// return the largerst n-body order of the sq operator (same as largerst rank)
     int many_body_order() const;
 
+    // return the largest excitation rank of the SQOperator
+    int excitation_rank() const;
+
     /// returns a list of ranks present in this SQOperator
     std::vector<int> ranks_present() const;
 

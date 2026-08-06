@@ -103,23 +103,40 @@ print("\n")
 sd_pool = qf.SQOpPool()
 sd_pool.set_orb_spaces(ref)
 sd_pool.fill_pool("SD")
-# print(sd_pool)
+print(sd_pool)
 
 A = sd_pool.get_qubit_operator('commuting_grp_lex', qubit_excitations = False)
 
 U, phase1 = trotterize(A, trotter_number=1)
+print(f"Num CNOT gates in UCC circuit: {U.get_num_cnots()}")
+
+# print("\nEntire UCC circuit")
+# print("==================")
+
+# for i, gate in enumerate(U.gates()):
+#     print(f"{i}: {gate}")
+
+# write for loop over operators and add up each count
+tot_cnot = 0
+for coeff, op in sd_pool.terms():
+    tot_cnot += op.count_cnot_for_exponential_full()
+print(f"Num CNOT gates in UCC circuit: {tot_cnot}")
 
 # FCI Computer case - UCC
 fci_comp.evolve_pool_trotter_basic(
     sd_pool,
     antiherm=ah,
     adjoint=adj)
-print(fci_comp)
+# print(fci_comp)
 
 # Fock Computer case
 fock_comp.apply_circuit(U)
-print(fock_comp)
+# print(fock_comp)
 
 do_phase_compare = True
+
 tensor_diff = fock_comp.get_fci_tensor_diff(fci_comp, do_phase_compare)
-print(tensor_diff)
+print(f"tensor diff^ {tensor_diff}")
+
+tensor_diff_norm = fock_comp.get_fci_tensor_diff_norm(fci_comp, do_phase_compare)
+print(f"tensor diff norm: {tensor_diff_norm}")

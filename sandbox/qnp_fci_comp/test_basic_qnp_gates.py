@@ -24,8 +24,8 @@ geom = [
     ('H', (0., 0., 2.0)),
     ('H', (0., 0., 3.0)), 
     ('H', (0., 0., 4.0)),
-    # ('H', (0., 0., 5.0)), 
-    # ('H', (0., 0., 6.0)),
+    ('H', (0., 0., 5.0)), 
+    ('H', (0., 0., 6.0)),
     # ('H', (0., 0., 7.0)), 
     # ('H', (0., 0., 8.0)),
     # ('H', (0., 0., 9.0)), 
@@ -48,7 +48,7 @@ print(f" nel:       {nel}")
 
 q1 = 3 # source/control
 q2 = 7 # target
-theta = np.pi/4
+theta = np.pi/2
 givens = qf.gate("Givens", q2, q1, theta)
 
 fci_comp = qf.FCIComputer(nel=nel, sz=sz, norb=norb)
