@@ -449,6 +449,31 @@ int SQOperator::count_cnot_for_exponential_full() const {
     return num_strings * (r > 1 ? 2*(r-1) : 0);
 }
 
+int SQOperator::count_cnot_for_qnp() const
+{
+    if (terms_.size() != 2) {
+        throw std::invalid_argument(
+            "Givens/QNP CNOT counting requires exactly 2 terms."
+        );
+    }
+
+    const int rank = excitation_rank();
+
+    // Single excitation -> one Givens circuit
+    if (rank == 1) {
+        return 2;
+    }
+
+    // Double excitation -> one QNP_PX circuit
+    if (rank == 2) {
+        return 6;
+    }
+
+    throw std::invalid_argument(
+        "Givens/QNP CNOT counting only supports singles and doubles."
+    );
+}
+
 /**
  * @brief Estimate the number of T-gates required to implement
  *        U = exp[K] for a two-term anti-Hermitian operator

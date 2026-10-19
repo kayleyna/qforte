@@ -84,6 +84,7 @@ PYBIND11_MODULE(qforte, m) {
             py::arg("B") = nullptr)
         .def("count_cnot_for_exponential", &SQOperator::count_cnot_for_exponential)
         .def("count_cnot_for_exponential_full", &SQOperator::count_cnot_for_exponential_full)
+        .def("count_cnot_for_qnp", &SQOperator::count_cnot_for_qnp)
         .def("count_T_for_exponential_full", &SQOperator::count_T_for_exponential_full)
         .def("str", &SQOperator::str)
         .def("__str__", &SQOperator::str)

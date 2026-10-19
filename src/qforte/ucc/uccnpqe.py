@@ -328,11 +328,11 @@ class UCCNPQE(UCCPQE):
 
     def get_residual_vector(self, trial_amps, inc_nres_vec=True):
         if(self._computer_type == 'fock'):
-            return self.get_residual_vector_fock(trial_amps)
+            return self.get_residual_vector_fock(trial_amps, inc_nres_vec=inc_nres_vec)
         elif(self._computer_type == 'fci'):
-            return self.get_residual_vector_fci(trial_amps)
+            return self.get_residual_vector_fci(trial_amps, inc_nres_vec=inc_nres_vec)
         elif(self._computer_type == 'fqe'):
-            return self.get_residual_vector_fqe(trial_amps)
+            return self.get_residual_vector_fqe(trial_amps, inc_nres_vec=inc_nres_vec)
         else:
             raise ValueError(f"{self._computer_type} is an unrecognized computer type.") 
 
@@ -378,11 +378,11 @@ class UCCNPQE(UCCPQE):
 
         return residuals
     
-    def get_residual_vector_fci(self, trial_amps):
+    def get_residual_vector_fci(self, trial_amps, inc_nres_vec=True):
         if(self._generator_type == 'ucc'):
-            return self.get_residual_vector_fci_ucc(trial_amps)
+            return self.get_residual_vector_fci_ucc(trial_amps, inc_nres_vec=inc_nres_vec)
         elif(self._generator_type == 'qnp'):
-            return self.get_residual_vector_fci_qnp(trial_amps)
+            return self.get_residual_vector_fci_qnp(trial_amps, inc_nres_vec=inc_nres_vec)
         else:
             raise ValueError(f"{self._generator_type} is an unrecognized generator type.")
     
@@ -472,6 +472,7 @@ class UCCNPQE(UCCPQE):
             The list of (real) floating point numbers which will characterize
             the state preparation circuit used in calculation of the residuals.
         """
+
         if(self._pool_type in ['sa_SD', 'GSD']):
             raise ValueError('Must use single term particle-hole nbody operators for residual calculation')
         
@@ -532,6 +533,11 @@ class UCCNPQE(UCCPQE):
         #     self._res_m_evals += 1 # is this necessary? 
 
         self._curr_energy = qc_res.get_hf_dot()
+        
+        if inc_nres_vec:
+            self._res_vec_norm = np.linalg.norm(residuals)
+            self._res_vec_evals += 1
+            self._res_m_evals += len(self._tamps)
 
         return residuals
         

@@ -1,6 +1,6 @@
 # index graphs for SD excitations using a Givens gate
 # single excitations --> single givens
-# double excitations --> double givens == QNP_or??
+# double excitations --> double givens == QNP_px
 
 import qforte as qf
 import numpy as np

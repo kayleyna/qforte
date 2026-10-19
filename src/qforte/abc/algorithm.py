@@ -510,13 +510,19 @@ class AnsatzAlgorithm(Algorithm):
         
         qc.hartree_fock()
 
-        qc.evolve_pool_trotter_basic(
-            temp_pool,
-            antiherm=True,
-            adjoint=False)
+        if (self._generator_type.lower() == 'ucc'):
+            qc.evolve_pool_trotter_basic(
+                temp_pool,
+                antiherm=True,
+                adjoint=False)
+        elif (self._generator_type.lower() == 'qnp'):
+            qc.evolve_pool_qnp_basic(
+                temp_pool,
+                adjoint=False)
+        else:
+            raise ValueError(f"Unknown generator type: {self._generator_type}")
         
         if(self._apply_ham_as_tensor):
-            
             self._curr_energy = np.real(
                 qc.get_exp_val_tensor(
                     self._zero_body_energy, 

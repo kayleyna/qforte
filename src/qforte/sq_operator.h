@@ -87,6 +87,10 @@ class SQOperator {
     // 2*(r-1), with r being the size of the contiguous qubit support.
     int count_cnot_for_exponential_full() const;
 
+    // Returns the number of CNOT gates required to implement the Givens or QNP Circuit
+    // for a two-term anti-Hermitian SQOperator
+    int count_cnot_for_qnp() const;
+
     /**
      * @brief Estimate the total number of T-gates required to implement
      *        U = exp[K] for a two-term anti-Hermitian operator

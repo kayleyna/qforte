@@ -4,68 +4,68 @@ import os
 from pathlib import Path
 
 molecules = {
-    "H6": {
-        "r": 1,
-        "symmetry": "d2h",
-        "build_geom": lambda r: [
-            ('H', (0., 0., i*r)) for i in range(6)
-        ]
-    },
-
-    # "H12": {
+    # "H4": {
     #     "r": 1,
     #     "symmetry": "d2h",
     #     "build_geom": lambda r: [
-    #         ('H', (0., 0., i*r)) for i in range(12)
+    #         ('H', (0., 0., i*r)) for i in range(4)
     #     ]
     # },
 
-    # "N2": {
-    #     "r": 1.75,
+    # "H6": {
+    #     "r": 1,
     #     "symmetry": "d2h",
     #     "build_geom": lambda r: [
-    #         ('N',  (0., 0., -0.54855568036781*r)),
-    #         ('N', (0., 0.,  0.54855568036781*r))
+    #         ('H', (0., 0., i*r)) for i in range(6)
     #     ]
     # },
 
-    # "LiH": {
-    #     "r": 1.6,
-    #     "symmetry": "c2v",
-    #     "build_geom": lambda r: [
-    #         ('Li', (0., 0., 0.0*r)),
-    #         ('H',  (0., 0., 1.0*r))
-    #     ]
-    # },
+    "N2": {
+        "r": 1.75,
+        "symmetry": "d2h",
+        "build_geom": lambda r: [
+            ('N',  (0., 0., -0.54855568036781*r)),
+            ('N', (0., 0.,  0.54855568036781*r))
+        ]
+    },
 
-    # "BeH2": {
-    #     "r": 1.33,
-    #     "symmetry": "d2h",
-    #     "build_geom": lambda r: [
-    #         ('H',  (0., 0., -1.0*r)),
-    #         ('Be', (0., 0.,  0.0*r)),
-    #         ('H',  (0., 0.,  1.0*r))
-    #     ]
-    # },
+    "LiH": {
+        "r": 1.6,
+        "symmetry": "c2v",
+        "build_geom": lambda r: [
+            ('Li', (0., 0., 0.0*r)),
+            ('H',  (0., 0., 1.0*r))
+        ]
+    },
 
-    # "H2O": {
-    #     "r": 0.96,
-    #     "symmetry": "c2v",
-    #     "build_geom": lambda r: [
-    #         ('O', (0., 0., 0.0*r)),
-    #         ('H', ( 0.7907*r, 0., 0.6122*r)),
-    #         ('H', (-0.7907*r, 0., 0.6122*r))
-    #     ]
-    # },
+    "BeH2": {
+        "r": 1.33,
+        "symmetry": "d2h",
+        "build_geom": lambda r: [
+            ('H',  (0., 0., -1.0*r)),
+            ('Be', (0., 0.,  0.0*r)),
+            ('H',  (0., 0.,  1.0*r))
+        ]
+    },
 
-    # "HF": {
-    #     "r": 0.92,
-    #     "symmetry": "c2v",
-    #     "build_geom": lambda r: [
-    #         ('F', (0., 0., 0.0*r)),
-    #         ('H', (0., 0., 1.0*r))
-    #     ]
-    # },
+    "H2O": {
+        "r": 0.96,
+        "symmetry": "c2v",
+        "build_geom": lambda r: [
+            ('O', (0., 0., 0.0*r)),
+            ('H', ( 0.7907*r, 0., 0.6122*r)),
+            ('H', (-0.7907*r, 0., 0.6122*r))
+        ]
+    },
+
+    "HF": {
+        "r": 0.92,
+        "symmetry": "c2v",
+        "build_geom": lambda r: [
+            ('F', (0., 0., 0.0*r)),
+            ('H', (0., 0., 1.0*r))
+        ]
+    },
 }
 
 # optimizers
@@ -104,10 +104,10 @@ methods = {
     # more to add, but testing code
 
     # PQE
-    "PQE_jacobi": {
-        "class": qf.UCCNPQE,
-        "run_kwargs": {"optimizer": "jacobi"}
-    },
+    # "PQE_jacobi": {
+    #     "class": qf.UCCNPQE,
+    #     "run_kwargs": {"optimizer": "jacobi"}
+    # },
 
     # SRU Variants (PQE)
     "SRU_cyclic_in": {
@@ -119,14 +119,14 @@ methods = {
         }
     },
 
-    "SRU_cyclic_out": {
-        "class": qf.UCCNPQE,
-        "run_kwargs": {
-            "optimizer": "sru",
-            "sru_type": "outside",
-            "sru_sweep_type": "cyclic"
-        }
-    },
+    # "SRU_cyclic_out": {
+    #     "class": qf.UCCNPQE,
+    #     "run_kwargs": {
+    #         "optimizer": "sru",
+    #         "sru_type": "outside",
+    #         "sru_sweep_type": "cyclic"
+    #     }
+    # },
 
     # "SRU_alternating_in": {
     #     "class": qf.UCCNPQE,

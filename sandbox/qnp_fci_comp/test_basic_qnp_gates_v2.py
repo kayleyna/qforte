@@ -117,10 +117,15 @@ print(f"Num CNOT gates in UCC circuit: {U.get_num_cnots()}")
 #     print(f"{i}: {gate}")
 
 # write for loop over operators and add up each count
-tot_cnot = 0
+tot_cnot_UCC = 0
 for coeff, op in sd_pool.terms():
-    tot_cnot += op.count_cnot_for_exponential_full()
-print(f"Num CNOT gates in UCC circuit: {tot_cnot}")
+    tot_cnot_UCC += op.count_cnot_for_exponential_full()
+print(f"Num CNOT gates in UCC circuit: {tot_cnot_UCC}")
+
+tot_cnot_QNP = 0
+for coeff, op in sd_pool.terms():
+    tot_cnot_QNP += op.count_cnot_for_qnp()
+print(f"Num CNOT gates in Givens/QNP circuit: {tot_cnot_QNP}")
 
 # FCI Computer case - UCC
 fci_comp.evolve_pool_trotter_basic(
